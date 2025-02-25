@@ -37,7 +37,8 @@ async def handler(websocket):
             data = json.loads(message)
             if data["type"] == "join":
                 print(f"Player {player_id} joined: {data['username']}")
-                if len(clients) == 2 and not game_started:
+                # Start or resume game if two clients and at least one player is active
+                if len(clients) == 2 and not all(p["gameOver"] for p in game_state["players"]):
                     game_started = True
                     print("Game started with 2 players!")
                     for client in clients:
@@ -55,15 +56,15 @@ async def handler(websocket):
                 game_state["speed"] = 3
                 game_state["dashOffset"] = 0
                 game_state["lastObstacleY"] = -250
-                # Restart game if both reset
-                if all(not p["gameOver"] for p in game_state["players"]) and len(clients) == 2:
+                if len(clients) == 2 and not all(p["gameOver"] for p in game_state["players"]):
                     game_started = True
-                    print("Game restarted!")
+                    print(f"Game resumed by Player {player_id}")
                     for client in clients:
                         await client.send(json.dumps({"type": "start"}))
     except websockets.ConnectionClosed:
         print(f"Player {player_id} disconnected")
-        del clients[websocket]
+        if websocket in clients:
+            del clients[websocket]
         if len(clients) < 2:
             game_started = False
             print("Game paused: waiting for 2 players")
@@ -74,11 +75,9 @@ async def handler(websocket):
 async def game_loop():
     while True:
         if game_started and len(clients) == 2:
-            # Check if both players' games are over
-            if all(p["gameOver"] for p in game_state["players"]):
-                game_started = False
-                print("Game stopped: both players' games are over")
-            else:
+            both_games_over = all(p["gameOver"] for p in game_state["players"])
+            
+            if not both_games_over:
                 game_state["gameTime"] += 1
                 game_state["speed"] = 3 + game_state["gameTime"] // 120 * 0.1
                 if game_state["speed"] > 15: game_state["speed"] = 15
@@ -121,11 +120,9 @@ async def game_loop():
                 await client.send(state_msg)
             except websockets.ConnectionClosed:
                 disconnected_clients.append(client)
-                print(f"Client {clients[client]} disconnected during broadcast")
-
-        for client in disconnected_clients:
-            if client in clients:
-                del clients[client]
+                if client in clients:  # Check before accessing
+                    print(f"Client {clients[client]} disconnected during broadcast")
+                    del clients[client]
 
         await asyncio.sleep(1 / 60)
 

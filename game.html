@@ -98,7 +98,7 @@
         const lightPoleRightImg = new Image(); lightPoleRightImg.src = 'images/lightPoleRight.png';
         const treeImg = new Image(); treeImg.src = 'images/tree.png';
 
-        const socket = new WebSocket('ws://racing-game-server.onrender.com');
+        const socket = new WebSocket('wss://racing-game-server.onrender.com');
         let playerId = null;
         let gameStarted = false;
 

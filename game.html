@@ -34,6 +34,9 @@
             font-size: 30px;
             font-family: Arial, sans-serif;
             z-index: 10;
+            background: rgba(0, 0, 0, 0.7); /* Slight background for visibility */
+            padding: 10px;
+            border-radius: 5px;
         }
         #gameOverScreen1 { left: 150px; transform: translate(-50%, -50%); }
         #gameOverScreen2 { left: 450px; transform: translate(-50%, -50%); }
@@ -98,8 +101,8 @@
         const lightPoleRightImg = new Image(); lightPoleRightImg.src = 'images/lightPoleRight.png';
         const treeImg = new Image(); treeImg.src = 'images/tree.png';
 
-     // const socket = new WebSocket('wss://racing-game-server.onrender.com');
-        const socket = new WebSocket('ws://localhost:8765');
+        const socket = new WebSocket('wss://racing-game-server.onrender.com');
+        // const socket = new WebSocket('ws://localhost:8765'); // Use this for local testing
         let playerId = null;
         let gameStarted = false;
 
@@ -115,6 +118,8 @@
                 document.getElementById('usernameDisplay').textContent = `Player ${playerId}: ${localStorage.getItem('username')}`;
             } else if (data.type === 'start') {
                 gameStarted = true;
+                document.getElementById('gameOverScreen1').style.display = 'none';
+                document.getElementById('gameOverScreen2').style.display = 'none';
                 startGame();
             } else if (data.type === 'state') {
                 player1.x = data.players[0].x;
@@ -132,7 +137,7 @@
         socket.onerror = (error) => console.error("WebSocket error:", error);
         socket.onclose = () => console.log("WebSocket closed");
 
-        let imagesLoaded = 0, totalImages = 10;
+        let imagesLoaded = 0, totalImages = 11;
         function imageLoaded() { 
             imagesLoaded++; 
             console.log(`Images loaded: ${imagesLoaded}/${totalImages}`); 
@@ -266,8 +271,8 @@
                 ctx.fillText(`Score: ${Math.floor(player1.score)}`, road1X, 20);
                 ctx.fillText(`Score: ${Math.floor(player2.score)}`, road2X, 20);
 
-                if (player1.gameOver) document.getElementById('gameOverScreen1').style.display = 'block';
-                if (player2.gameOver) document.getElementById('gameOverScreen2').style.display = 'block';
+                document.getElementById('gameOverScreen1').style.display = player1.gameOver ? 'block' : 'none';
+                document.getElementById('gameOverScreen2').style.display = player2.gameOver ? 'block' : 'none';
 
                 if (!player1.gameOver || !player2.gameOver) dashOffset -= speed;
                 if (dashOffset <= -70) dashOffset += 70;

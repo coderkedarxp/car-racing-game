@@ -37,8 +37,22 @@ async def handler(websocket):
             data = json.loads(message)
             if data["type"] == "join":
                 print(f"Player {player_id} joined: {data['username']}")
-                # Start or resume game if two clients and at least one player is active
-                if len(clients) == 2 and not all(p["gameOver"] for p in game_state["players"]):
+                # Reset both players if game was previously over
+                if len(clients) == 2 and all(p["gameOver"] for p in game_state["players"]):
+                    game_state["players"] = [
+                        {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
+                        {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
+                    ]
+                    game_state["obstacles"] = []
+                    game_state["gameTime"] = 0
+                    game_state["speed"] = 3
+                    game_state["dashOffset"] = 0
+                    game_state["lastObstacleY"] = -250
+                    game_started = True
+                    print("Game restarted with 2 new players!")
+                    for client in clients:
+                        await client.send(json.dumps({"type": "start"}))
+                elif len(clients) == 2 and not game_started:
                     game_started = True
                     print("Game started with 2 players!")
                     for client in clients:
@@ -51,6 +65,12 @@ async def handler(websocket):
                     "gameOver": False,
                     "score": 0
                 }
+                # Reset both if both were over
+                if all(p["gameOver"] for p in game_state["players"]):
+                    game_state["players"] = [
+                        {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
+                        {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
+                    ]
                 game_state["obstacles"] = []
                 game_state["gameTime"] = 0
                 game_state["speed"] = 3
@@ -102,8 +122,9 @@ async def game_loop():
                         for o in game_state["obstacles"]:
                             road_x = 50 if i == 0 else 350
                             obstacle_x = o["x"] if i == 0 else (o["x"] + 300)
-                            if (o["y"] + 100 > 900 - 60 - 10 and
-                                o["y"] < 900 and
+                            # Trigger collision when car bottom just touches obstacle top
+                            if (o["y"] >= 900 - 60 - 10 and  # Obstacle top >= car top
+                                o["y"] <= 900 - 10 and       # Obstacle top <= car bottom
                                 abs(obstacle_x - player["x"]) < (40 / 2 + 80 / 2)):
                                 player["gameOver"] = True
                                 print(f"Player {i + 1} crashed at x={player['x']}, obstacle x={obstacle_x}")
@@ -115,14 +136,16 @@ async def game_loop():
 
         state_msg = json.dumps({"type": "state", **game_state})
         disconnected_clients = []
-        for client in clients:
+        for client in list(clients.keys()):
             try:
                 await client.send(state_msg)
             except websockets.ConnectionClosed:
                 disconnected_clients.append(client)
-                if client in clients:  # Check before accessing
-                    print(f"Client {clients[client]} disconnected during broadcast")
-                    del clients[client]
+
+        for client in disconnected_clients:
+            if client in clients:
+                print(f"Client {clients[client]} disconnected during broadcast")
+                del clients[client]
 
         await asyncio.sleep(1 / 60)
 

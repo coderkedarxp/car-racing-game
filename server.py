@@ -2,9 +2,8 @@ import asyncio
 import websockets
 import json
 import random
-import os  # Add this import
+import os
 
-# Use PORT from environment variable, default to 8765 for local testing
 PORT = int(os.getenv("PORT", 8765))
 
 game_state = {
@@ -56,6 +55,12 @@ async def handler(websocket):
                 game_state["speed"] = 3
                 game_state["dashOffset"] = 0
                 game_state["lastObstacleY"] = -250
+                # Restart game if both reset
+                if all(not p["gameOver"] for p in game_state["players"]) and len(clients) == 2:
+                    game_started = True
+                    print("Game restarted!")
+                    for client in clients:
+                        await client.send(json.dumps({"type": "start"}))
     except websockets.ConnectionClosed:
         print(f"Player {player_id} disconnected")
         del clients[websocket]
@@ -69,40 +74,45 @@ async def handler(websocket):
 async def game_loop():
     while True:
         if game_started and len(clients) == 2:
-            game_state["gameTime"] += 1
-            game_state["speed"] = 3 + game_state["gameTime"] // 120 * 0.1
-            if game_state["speed"] > 15: game_state["speed"] = 15
+            # Check if both players' games are over
+            if all(p["gameOver"] for p in game_state["players"]):
+                game_started = False
+                print("Game stopped: both players' games are over")
+            else:
+                game_state["gameTime"] += 1
+                game_state["speed"] = 3 + game_state["gameTime"] // 120 * 0.1
+                if game_state["speed"] > 15: game_state["speed"] = 15
 
-            if game_state["gameTime"] > 60:
-                highest_obstacle = min([o["y"] for o in game_state["obstacles"]]) if game_state["obstacles"] else 1000
-                if highest_obstacle >= game_state["lastObstacleY"] + game_state["minGap"] and random.random() < 0.5:
-                    side = "left" if random.random() < 0.5 else "right"
-                    x = (50 if side == "left" else 50 + 200 / 2) + 200 / 4
-                    img = random.choice(obstacle_images)
-                    game_state["obstacles"].append({"x": x, "y": -100, "side": side, "img": img})
-                    game_state["lastObstacleY"] = -20
-                    print(f"Spawned obstacle: {side}, x: {x}, img: {img}")
+                if game_state["gameTime"] > 60:
+                    highest_obstacle = min([o["y"] for o in game_state["obstacles"]]) if game_state["obstacles"] else 1000
+                    if highest_obstacle >= game_state["lastObstacleY"] + game_state["minGap"] and random.random() < 0.5:
+                        side = "left" if random.random() < 0.5 else "right"
+                        x = (50 if side == "left" else 50 + 200 / 2) + 200 / 4
+                        img = random.choice(obstacle_images)
+                        game_state["obstacles"].append({"x": x, "y": -100, "side": side, "img": img})
+                        game_state["lastObstacleY"] = -20
+                        print(f"Spawned obstacle: {side}, x: {x}, img: {img}")
 
-            for o in game_state["obstacles"]:
-                o["y"] += game_state["speed"]
-                print(f"Obstacle updated: y={o['y']}")
-            game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 1000]
+                for o in game_state["obstacles"]:
+                    o["y"] += game_state["speed"]
+                    print(f"Obstacle updated: y={o['y']}")
+                game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 1000]
 
-            for i, player in enumerate(game_state["players"]):
-                if not player["gameOver"]:
-                    for o in game_state["obstacles"]:
-                        road_x = 50 if i == 0 else 350
-                        obstacle_x = o["x"] if i == 0 else (o["x"] + 300)
-                        if (o["y"] + 100 > 900 - 60 - 10 and
-                            o["y"] < 900 and
-                            abs(obstacle_x - player["x"]) < (40 / 2 + 80 / 2)):
-                            player["gameOver"] = True
-                            print(f"Player {i + 1} crashed at x={player['x']}, obstacle x={obstacle_x}")
+                for i, player in enumerate(game_state["players"]):
                     if not player["gameOver"]:
-                        player["score"] += game_state["speed"] / 60
+                        for o in game_state["obstacles"]:
+                            road_x = 50 if i == 0 else 350
+                            obstacle_x = o["x"] if i == 0 else (o["x"] + 300)
+                            if (o["y"] + 100 > 900 - 60 - 10 and
+                                o["y"] < 900 and
+                                abs(obstacle_x - player["x"]) < (40 / 2 + 80 / 2)):
+                                player["gameOver"] = True
+                                print(f"Player {i + 1} crashed at x={player['x']}, obstacle x={obstacle_x}")
+                        if not player["gameOver"]:
+                            player["score"] += game_state["speed"] / 60
 
-            game_state["dashOffset"] -= game_state["speed"]
-            if game_state["dashOffset"] <= -70: game_state["dashOffset"] += 70
+                game_state["dashOffset"] -= game_state["speed"]
+                if game_state["dashOffset"] <= -70: game_state["dashOffset"] += 70
 
         state_msg = json.dumps({"type": "state", **game_state})
         disconnected_clients = []

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Racing Game - Enter Username</title>
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        form { text-align: center; }
+        input, button { padding: 10px; margin: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <form id="usernameForm">
+        <h1>Racing Game</h1>
+        <input type="text" id="username" placeholder="Enter your username" required>
+        <br>
+        <button type="submit">Start Game</button>
+    </form>
+    <script>
+        document.getElementById('usernameForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            if (username) {
+                localStorage.setItem('username', username);
+                window.location.href = 'game.html';
+            }
+        });
+    </script>
+</body>
+</html>

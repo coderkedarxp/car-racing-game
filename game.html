@@ -33,6 +33,7 @@
             color: white;
             font-size: 30px;
             font-family: Arial, sans-serif;
+            z-index: 10;
         }
         #gameOverScreen1 { left: 150px; transform: translate(-50%, -50%); }
         #gameOverScreen2 { left: 450px; transform: translate(-50%, -50%); }
@@ -99,6 +100,7 @@
 
         const socket = new WebSocket('ws://localhost:8765');
         let playerId = null;
+        let gameStarted = false;
 
         socket.onopen = () => {
             console.log("WebSocket connected");
@@ -110,6 +112,9 @@
             if (data.type === 'init') {
                 playerId = data.playerId;
                 document.getElementById('usernameDisplay').textContent = `Player ${playerId}: ${localStorage.getItem('username')}`;
+            } else if (data.type === 'start') {
+                gameStarted = true;
+                startGame();
             } else if (data.type === 'state') {
                 player1.x = data.players[0].x;
                 player1.gameOver = data.players[0].gameOver;
@@ -130,7 +135,7 @@
         function imageLoaded() { 
             imagesLoaded++; 
             console.log(`Images loaded: ${imagesLoaded}/${totalImages}`); 
-            if (imagesLoaded === totalImages) startGame(); 
+            if (imagesLoaded === totalImages) console.log("Images ready, waiting for server to start game");
         }
         function imageError(img) { console.error(`Failed to load: ${img.src}`); }
         playerCarImg.onload = imageLoaded; playerCarImg.onerror = () => imageError(playerCarImg);
@@ -142,14 +147,14 @@
         canvas.width = 600;
         canvas.height = window.innerHeight - 40;
 
-        function drawRoad(x) {
+        function drawRoad(x, gameOver) {
             ctx.fillStyle = 'gray';
             ctx.fillRect(x, 0, roadWidth, canvas.height);
             ctx.beginPath();
             ctx.setLineDash([20, 10]);
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 2;
-            ctx.lineDashOffset = dashOffset;
+            ctx.lineDashOffset = gameOver ? 0 : dashOffset;
             ctx.moveTo(x + 50, 0);
             ctx.lineTo(x + 50, canvas.height);
             ctx.moveTo(x + roadWidth - 50, 0);
@@ -182,9 +187,11 @@
             }
         }
 
-        function updateRoadsideObjects(objects) {
-            objects.forEach(o => { o.y += speed; });
-            objects.forEach(o => { if (o.y > canvas.height + 50) o.y -= (canvas.height + spacing * 2); });
+        function updateRoadsideObjects(objects, gameOver) {
+            if (!gameOver) {
+                objects.forEach(o => { o.y += speed; });
+                objects.forEach(o => { if (o.y > canvas.height + 50) o.y -= (canvas.height + spacing * 2); });
+            }
         }
 
         function drawRoadsideObjects(objects) {
@@ -220,17 +227,23 @@
 
         function gameLoop() {
             try {
+                if (!gameStarted) return;
                 console.log("Game loop running, frame:", gameTime);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawRoad(road1X);
-                drawRoad(road2X);
+                drawRoad(road1X, player1.gameOver);
+                drawRoad(road2X, player2.gameOver);
+                updateRoadsideObjects(roadsideObjects1, player1.gameOver);
+                updateRoadsideObjects(roadsideObjects2, player2.gameOver);
                 drawRoadsideObjects(roadsideObjects1);
                 drawRoadsideObjects(roadsideObjects2);
 
                 const moveSpeed = 0.2;
                 [player1, player2].forEach(player => {
                     player.angle += (player.targetAngle - player.angle) * moveSpeed;
-                    if (Math.abs(player.targetAngle - player.angle) < 0.01) player.angle = player.targetAngle;
+                    if (Math.abs(player.targetAngle - player.angle) < 0.01) {
+                        player.angle = player.targetAngle;
+                        if (player.x === player.targetX) player.targetAngle = 0;
+                    }
                     if (!player.gameOver) drawCar(player);
                 });
 
@@ -238,8 +251,8 @@
                     console.log("Drawing obstacle:", o);
                     const img = obstacleImageMap[o.img];
                     if (img) {
-                        ctx.drawImage(img, o.x - obstacleWidth / 2, o.y, obstacleWidth, obstacleHeight);
-                        if (o.side === 'left') {
+                        if (!player1.gameOver) ctx.drawImage(img, o.x - obstacleWidth / 2, o.y, obstacleWidth, obstacleHeight);
+                        if (!player2.gameOver && o.side === 'left') {
                             ctx.drawImage(img, o.x - obstacleWidth / 2 + 300, o.y, obstacleWidth, obstacleHeight);
                         }
                     } else {
@@ -254,6 +267,9 @@
 
                 if (player1.gameOver) document.getElementById('gameOverScreen1').style.display = 'block';
                 if (player2.gameOver) document.getElementById('gameOverScreen2').style.display = 'block';
+
+                if (!player1.gameOver || !player2.gameOver) dashOffset -= speed;
+                if (dashOffset <= -70) dashOffset += 70;
 
                 requestAnimationFrame(gameLoop);
             } catch (e) {

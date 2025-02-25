@@ -18,7 +18,7 @@ game_state = {
 
 clients = {}
 obstacle_images = ['Ambulance.png', 'Audi.png', 'Black_viper.png', 'Police.png', 'taxi.png', 'truck.png', 'Mini_truck.png']
-game_started = False  # New flag to control game loop
+game_started = False
 
 async def handler(websocket):
     global game_started
@@ -34,9 +34,11 @@ async def handler(websocket):
             data = json.loads(message)
             if data["type"] == "join":
                 print(f"Player {player_id} joined: {data['username']}")
-                if len(clients) == 2 and not game_started:  # Start game when 2 players join
+                if len(clients) == 2 and not game_started:
                     game_started = True
                     print("Game started with 2 players!")
+                    for client in clients:
+                        await client.send(json.dumps({"type": "start"}))
             elif data["type"] == "move":
                 game_state["players"][data["playerId"] - 1]["x"] = data["x"]
             elif data["type"] == "reset":
@@ -54,7 +56,7 @@ async def handler(websocket):
         print(f"Player {player_id} disconnected")
         del clients[websocket]
         if len(clients) < 2:
-            game_started = False  # Pause game if players drop below 2
+            game_started = False
             print("Game paused: waiting for 2 players")
     finally:
         if websocket in clients:
@@ -62,7 +64,7 @@ async def handler(websocket):
 
 async def game_loop():
     while True:
-        if game_started and len(clients) == 2:  # Only run game logic when started with 2 players
+        if game_started and len(clients) == 2:
             game_state["gameTime"] += 1
             game_state["speed"] = 3 + game_state["gameTime"] // 120 * 0.1
             if game_state["speed"] > 15: game_state["speed"] = 15
@@ -86,7 +88,7 @@ async def game_loop():
                 if not player["gameOver"]:
                     for o in game_state["obstacles"]:
                         road_x = 50 if i == 0 else 350
-                        obstacle_x = o["x"] - (road_x if o["side"] == "left" else road_x + 100)
+                        obstacle_x = o["x"] if i == 0 else (o["x"] + 300)
                         if (o["y"] + 100 > 900 - 60 - 10 and
                             o["y"] < 900 and
                             abs(obstacle_x - player["x"]) < (40 / 2 + 80 / 2)):

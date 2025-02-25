@@ -2,6 +2,10 @@ import asyncio
 import websockets
 import json
 import random
+import os  # Add this import
+
+# Use PORT from environment variable, default to 8765 for local testing
+PORT = int(os.getenv("PORT", 8765))
 
 game_state = {
     "players": [
@@ -116,7 +120,7 @@ async def game_loop():
         await asyncio.sleep(1 / 60)
 
 async def main():
-    server = await websockets.serve(handler, "localhost", 8765)
+    server = await websockets.serve(handler, "0.0.0.0", PORT)
     asyncio.create_task(game_loop())
     await server.wait_closed()
 

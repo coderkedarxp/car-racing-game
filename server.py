@@ -17,7 +17,7 @@ def reset_game_state():
         ],
         "obstacles": [],
         "gameTime": 0,
-        "speed": 3,
+        "speed": 5,  # Increased base speed from 3 to 5
         "dashOffset": 0,
         "lastObstacleY": -250,
         "minGap": 250
@@ -51,7 +51,6 @@ async def handler(websocket):
             elif data["type"] == "move":
                 if not game_state["players"][player_id - 1]["gameOver"]:
                     game_state["players"][player_id - 1]["x"] = data["x"]
-                    # Mark state as changed when a player moves
                     await broadcast_state()
     except websockets.ConnectionClosed:
         print(f"Player {player_id} disconnected")
@@ -84,7 +83,9 @@ async def game_loop():
             
             if not any_game_over:
                 game_state["gameTime"] += 1
-                game_state["speed"] = min(3 + game_state["gameTime"] // 120 * 0.1, 15)
+                # Speed increases by 0.2 every 60 ticks, max 20
+                game_state["speed"] = min(5 + (game_state["gameTime"] // 60) * 0.2, 20)
+                print(f"Current speed: {game_state['speed']}")  # Debug log
 
                 if random.random() < 0.05:
                     last_y = min([o["y"] for o in game_state["obstacles"]] or [float('inf')])
@@ -119,7 +120,7 @@ async def game_loop():
                 game_started = False
                 print("Game over: one player crashed")
                 state_changed = True
-                await broadcast_state()  # Send final state
+                await broadcast_state()
                 game_state = reset_game_state()
                 clients.clear()
                 player_usernames = [None, None]

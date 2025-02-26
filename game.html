@@ -80,14 +80,17 @@
         const carHeight = 60;
         const obstacleWidth = 40;
         const obstacleHeight = 60;
+        const coinWidth = 40;  // Assuming coin size
+        const coinHeight = 40;
 
         let playerId;
         let gameStarted = false;
         let dashOffset = 0;
 
-        let player1 = { x: 100, gameOver: false, score: 0, username: "Player 1" };
-        let player2 = { x: 400, gameOver: false, score: 0, username: "Player 2" };
+        let player1 = { x: 100, gameOver: false, score: 0, coins: 0, username: "Player 1" };
+        let player2 = { x: 400, gameOver: false, score: 0, coins: 0, username: "Player 2" };
         let obstacles = [];
+        let coins = [];
 
         const obstacleImageMap = {};
         const obstacleImages = [
@@ -108,6 +111,11 @@
         carImage.onerror = () => console.error("Failed to load car.png");
         carImage.src = "images/car.png";
 
+        const coinImage = new Image();
+        coinImage.onload = () => console.log("Coin image loaded");
+        coinImage.onerror = () => console.error("Failed to load coin.png");
+        coinImage.src = "images/coin.png";
+
         const WS_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
             ? `ws://${location.hostname}:8765`
             : 'wss://racing-game-server.onrender.com';
@@ -117,9 +125,10 @@
             console.log("WebSocket connected");
             const username = localStorage.getItem("username") || "Anonymous";
             socket.send(JSON.stringify({ type: "join", username }));
-            player1 = { x: 100, gameOver: false, score: 0, username: "Player 1" };
-            player2 = { x: 400, gameOver: false, score: 0, username: "Player 2" };
+            player1 = { x: 100, gameOver: false, score: 0, coins: 0, username: "Player 1" };
+            player2 = { x: 400, gameOver: false, score: 0, coins: 0, username: "Player 2" };
             obstacles = [];
+            coins = [];
             gameStarted = false;
             dashOffset = 0;
         };
@@ -140,8 +149,9 @@
                 player1 = { ...player1, ...data.players[0] };
                 player2 = { ...player2, ...data.players[1] };
                 obstacles = data.obstacles;
+                coins = data.coins;
                 dashOffset = data.dashOffset;
-                console.log("Obstacles received:", obstacles.map(o => ({ x: o.x, y: o.y, img: o.img })));
+                console.log("State received:", { obstacles, coins });
             }
         };
 
@@ -150,7 +160,7 @@
 
         function startGame() {
             let lastMoveTime = 0;
-            const moveCooldown = 100; // 100ms cooldown
+            const moveCooldown = 100;
 
             document.addEventListener("keydown", (e) => {
                 if (!gameStarted) return;
@@ -205,6 +215,15 @@
             }
         }
 
+        function drawCoin(x, y) {
+            if (coinImage.complete) {
+                ctx.drawImage(coinImage, x - coinWidth / 2, y, coinWidth, coinHeight);
+            } else {
+                ctx.fillStyle = "yellow";
+                ctx.fillRect(x - coinWidth / 2, y, coinWidth, coinHeight);
+            }
+        }
+
         function gameLoop() {
             if (!gameStarted) return;
 
@@ -225,28 +244,33 @@
                 }
             });
 
+            coins.forEach(c => {
+                drawCoin(c.x, c.y);
+            });
+
             ctx.fillStyle = "white";
             ctx.font = "16px Arial";
             ctx.textAlign = "center";
             ctx.fillText(player1.username, road1X + roadWidth / 2, 20);
-            ctx.fillText(`Score: ${Math.floor(player1.score)}`, road1X + roadWidth / 2, 40);
+            ctx.fillText(`Score: ${Math.floor(player1.score)} Coins: ${player1.coins}`, road1X + roadWidth / 2, 40);
             ctx.fillText(player2.username, road2X + roadWidth / 2, 20);
-            ctx.fillText(`Score: ${Math.floor(player2.score)}`, road2X + roadWidth / 2, 40);
+            ctx.fillText(`Score: ${Math.floor(player2.score)} Coins: ${player2.coins}`, road2X + roadWidth / 2, 40);
 
             const eitherGameOver = player1.gameOver || player2.gameOver;
             if (eitherGameOver) {
+                const winner = player1.coins > player2.coins ? 1 : 2;
                 if (playerId === 1) {
-                    document.getElementById("message1").textContent = player1.gameOver 
-                        ? `You Lose (Score: ${Math.floor(player1.score)})` 
-                        : `You Won (Score: ${Math.floor(player1.score)})`;
+                    document.getElementById("message1").textContent = winner === 1 
+                        ? `You Won! (Score: ${Math.floor(player1.score)}, Coins: ${player1.coins})`
+                        : `You Lose (Score: ${Math.floor(player1.score)}, Coins: ${player1.coins})`;
                     const screen1 = document.getElementById("gameOverScreen1");
                     screen1.classList.remove("hide");
                     screen1.classList.add("show");
                     document.getElementById("backButton1").style.display = "inline-block";
                 } else if (playerId === 2) {
-                    document.getElementById("message2").textContent = player2.gameOver 
-                        ? `You Lose (Score: ${Math.floor(player2.score)})` 
-                        : `You Won (Score: ${Math.floor(player2.score)})`;
+                    document.getElementById("message2").textContent = winner === 2 
+                        ? `You Won! (Score: ${Math.floor(player2.score)}, Coins: ${player2.coins})`
+                        : `You Lose (Score: ${Math.floor(player2.score)}, Coins: ${player2.coins})`;
                     const screen2 = document.getElementById("gameOverScreen2");
                     screen2.classList.remove("hide");
                     screen2.classList.add("show");

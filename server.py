@@ -6,25 +6,27 @@ import os
 
 PORT = int(os.getenv("PORT", 8765))
 
-game_state = {
-    "players": [
-        {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
-        {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
-    ],
-    "obstacles": [],
-    "gameTime": 0,
-    "speed": 3,
-    "dashOffset": 0,
-    "lastObstacleY": -250,
-    "minGap": 250
-}
+def reset_game_state():
+    return {
+        "players": [
+            {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
+            {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
+        ],
+        "obstacles": [],
+        "gameTime": 0,
+        "speed": 3,
+        "dashOffset": 0,
+        "lastObstacleY": -250,
+        "minGap": 250
+    }
 
+game_state = reset_game_state()
 clients = {}
-obstacle_images = ['Ambulance.png', 'Audi.png', 'Black_viper.png', 'Police.png', 'taxi.png', 'truck.png', 'Mini_truck.png']
+obstacle_images = ['obstacleCarBlue.png', 'obstacleCarGreen.png', 'obstacleCarWhite.png']
 game_started = False
 
 async def handler(websocket):
-    global game_started
+    global game_started, game_state
     player_id = len(clients) + 1
     if player_id > 2:
         await websocket.send(json.dumps({"type": "error", "message": "Game is full"}))
@@ -37,50 +39,15 @@ async def handler(websocket):
             data = json.loads(message)
             if data["type"] == "join":
                 print(f"Player {player_id} joined: {data['username']}")
-                # Reset both players if game was previously over
-                if len(clients) == 2 and all(p["gameOver"] for p in game_state["players"]):
-                    game_state["players"] = [
-                        {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
-                        {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
-                    ]
-                    game_state["obstacles"] = []
-                    game_state["gameTime"] = 0
-                    game_state["speed"] = 3
-                    game_state["dashOffset"] = 0
-                    game_state["lastObstacleY"] = -250
+                if len(clients) == 2:
+                    game_state = reset_game_state()
                     game_started = True
-                    print("Game restarted with 2 new players!")
-                    for client in clients:
-                        await client.send(json.dumps({"type": "start"}))
-                elif len(clients) == 2 and not game_started:
-                    game_started = True
-                    print("Game started with 2 players!")
+                    print("Game started with 2 new players!")
                     for client in clients:
                         await client.send(json.dumps({"type": "start"}))
             elif data["type"] == "move":
-                game_state["players"][data["playerId"] - 1]["x"] = data["x"]
-            elif data["type"] == "reset":
-                game_state["players"][data["playerId"] - 1] = {
-                    "x": (50 if data["playerId"] == 1 else 350) + 200 / 4,
-                    "gameOver": False,
-                    "score": 0
-                }
-                # Reset both if both were over
-                if all(p["gameOver"] for p in game_state["players"]):
-                    game_state["players"] = [
-                        {"x": 50 + 200 / 4, "gameOver": False, "score": 0},
-                        {"x": 350 + 200 / 4, "gameOver": False, "score": 0}
-                    ]
-                game_state["obstacles"] = []
-                game_state["gameTime"] = 0
-                game_state["speed"] = 3
-                game_state["dashOffset"] = 0
-                game_state["lastObstacleY"] = -250
-                if len(clients) == 2 and not all(p["gameOver"] for p in game_state["players"]):
-                    game_started = True
-                    print(f"Game resumed by Player {player_id}")
-                    for client in clients:
-                        await client.send(json.dumps({"type": "start"}))
+                if not game_state["players"][data["playerId"] - 1]["gameOver"]:
+                    game_state["players"][data["playerId"] - 1]["x"] = data["x"]
     except websockets.ConnectionClosed:
         print(f"Player {player_id} disconnected")
         if websocket in clients:
@@ -93,6 +60,7 @@ async def handler(websocket):
             del clients[websocket]
 
 async def game_loop():
+    global game_started, game_state
     while True:
         if game_started and len(clients) == 2:
             both_games_over = all(p["gameOver"] for p in game_state["players"])
@@ -102,38 +70,47 @@ async def game_loop():
                 game_state["speed"] = 3 + game_state["gameTime"] // 120 * 0.1
                 if game_state["speed"] > 15: game_state["speed"] = 15
 
-                if game_state["gameTime"] > 60:
-                    highest_obstacle = min([o["y"] for o in game_state["obstacles"]]) if game_state["obstacles"] else 1000
-                    if highest_obstacle >= game_state["lastObstacleY"] + game_state["minGap"] and random.random() < 0.5:
+                # Spawn obstacles with proper gaps
+                if game_state["gameTime"] > 60 and random.random() < 0.5:
+                    lowest_obstacle = max([o["y"] for o in game_state["obstacles"]]) if game_state["obstacles"] else -float('inf')
+                    if lowest_obstacle <= game_state["lastObstacleY"] - game_state["minGap"]:
                         side = "left" if random.random() < 0.5 else "right"
                         x = (50 if side == "left" else 50 + 200 / 2) + 200 / 4
                         img = random.choice(obstacle_images)
-                        game_state["obstacles"].append({"x": x, "y": -100, "side": side, "img": img})
-                        game_state["lastObstacleY"] = -20
-                        print(f"Spawned obstacle: {side}, x: {x}, img: {img}")
+                        game_state["obstacles"].append({"x": x, "y": -60, "side": side, "img": img})
+                        game_state["lastObstacleY"] = -60  # Track Y position of the last obstacle
 
+                # Move obstacles
                 for o in game_state["obstacles"]:
                     o["y"] += game_state["speed"]
-                    print(f"Obstacle updated: y={o['y']}")
-                game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 1000]
+                game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 800]
 
+                # Check collisions
                 for i, player in enumerate(game_state["players"]):
                     if not player["gameOver"]:
+                        player_road_x = 50 if i == 0 else 350
                         for o in game_state["obstacles"]:
-                            road_x = 50 if i == 0 else 350
-                            obstacle_x = o["x"] if i == 0 else (o["x"] + 300)
-                            # Trigger collision when car bottom just touches obstacle top
-                            if (o["y"] >= 900 - 60 - 10 and  # Obstacle top >= car top
-                                o["y"] <= 900 - 10 and       # Obstacle top <= car bottom
-                                abs(obstacle_x - player["x"]) < (40 / 2 + 80 / 2)):
+                            if i == 0:
+                                obstacle_x = o["x"]  # Player 1 uses obstacle x as-is
+                            else:  # Player 2
+                                obstacle_x = o["x"] + 300 if o["side"] == "left" else o["x"] + 200  # Adjust for Player 2's road
+                            if (o["y"] + 60 > 730 and  # Obstacle bottom > car top
+                                o["y"] <= 790 and      # Obstacle top <= car bottom
+                                abs(obstacle_x - player["x"]) < 40):  # Horizontal collision
                                 player["gameOver"] = True
-                                print(f"Player {i + 1} crashed at x={player['x']}, obstacle x={obstacle_x}")
+                                print(f"Player {i + 1} crashed at x={player['x']}, obstacle x={obstacle_x}, y={o['y']}")
                         if not player["gameOver"]:
                             player["score"] += game_state["speed"] / 60
 
+                # Update dash offset
                 game_state["dashOffset"] -= game_state["speed"]
                 if game_state["dashOffset"] <= -70: game_state["dashOffset"] += 70
+            else:
+                game_state = reset_game_state()
+                game_started = False
+                print("Both players game over - game reset")
 
+        # Broadcast game state
         state_msg = json.dumps({"type": "state", **game_state})
         disconnected_clients = []
         for client in list(clients.keys()):
@@ -142,12 +119,13 @@ async def game_loop():
             except websockets.ConnectionClosed:
                 disconnected_clients.append(client)
 
+        # Clean up disconnected clients
         for client in disconnected_clients:
             if client in clients:
                 print(f"Client {clients[client]} disconnected during broadcast")
                 del clients[client]
 
-        await asyncio.sleep(1 / 60)
+        await asyncio.sleep(1 / 30)
 
 async def main():
     server = await websockets.serve(handler, "0.0.0.0", PORT)

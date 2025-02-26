@@ -99,7 +99,7 @@
         carImage.onerror = () => console.error("Failed to load car.png");
         carImage.src = "images/car.png";
 
-        const socket = new WebSocket(`ws://${location.hostname}:8765`);
+        const socket = new WebSocket('wss://racing-game-server.onrender.com');
 
         socket.onopen = () => {
             console.log("WebSocket connected");

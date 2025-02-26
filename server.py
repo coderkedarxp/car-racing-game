@@ -17,7 +17,7 @@ def reset_game_state():
         ],
         "obstacles": [],
         "gameTime": 0,
-        "speed": 5,  # Increased base speed from 3 to 5
+        "speed": 6,  # Increased base speed from 5 to 6
         "dashOffset": 0,
         "lastObstacleY": -250,
         "minGap": 250
@@ -83,8 +83,8 @@ async def game_loop():
             
             if not any_game_over:
                 game_state["gameTime"] += 1
-                # Speed increases by 0.2 every 60 ticks, max 20
-                game_state["speed"] = min(5 + (game_state["gameTime"] // 60) * 0.2, 20)
+                # Speed increases by 0.5 every 30 ticks, max 30
+                game_state["speed"] = min(6 + (game_state["gameTime"] // 30) * 0.5, 30)
                 print(f"Current speed: {game_state['speed']}")  # Debug log
 
                 if random.random() < 0.05:

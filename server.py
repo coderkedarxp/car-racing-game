@@ -12,13 +12,12 @@ obstacle_images = ['obstacleCarBlue.png', 'obstacleCarGreen.png', 'obstacleCarWh
 def reset_game_state():
     return {
         "players": [
-            {"x": 100, "gameOver": False, "score": 0, "coins": 0, "username": player_usernames[0] or "Player 1"},
-            {"x": 400, "gameOver": False, "score": 0, "coins": 0, "username": player_usernames[1] or "Player 2"}
+            {"x": 100, "gameOver": False, "score": 0, "username": player_usernames[0] or "Player 1"},
+            {"x": 400, "gameOver": False, "score": 0, "username": player_usernames[1] or "Player 2"}
         ],
         "obstacles": [],
-        "coins": [],  # New list for active coins
         "gameTime": 0,
-        "speed": 6,
+        "speed": 6,  # Increased base speed from 5 to 6
         "dashOffset": 0,
         "lastObstacleY": -250,
         "minGap": 250
@@ -84,10 +83,10 @@ async def game_loop():
             
             if not any_game_over:
                 game_state["gameTime"] += 1
+                # Speed increases by 0.5 every 30 ticks, max 30
                 game_state["speed"] = min(6 + (game_state["gameTime"] // 30) * 0.5, 30)
                 print(f"Current speed: {game_state['speed']}")  # Debug log
 
-                # Spawn obstacles
                 if random.random() < 0.05:
                     last_y = min([o["y"] for o in game_state["obstacles"]] or [float('inf')])
                     if last_y > game_state["minGap"]:
@@ -96,43 +95,18 @@ async def game_loop():
                         game_state["obstacles"].append({"x": lane, "y": -60, "img": img})
                         state_changed = True
 
-                # Spawn coins
-                if random.random() < 0.05:  # 5% chance to spawn a coin
-                    last_y = min([c["y"] for c in game_state["coins"]] or [float('inf')])
-                    if last_y > game_state["minGap"]:
-                        lane = random.choice([100, 200, 400, 500])
-                        game_state["coins"].append({"x": lane, "y": -40})  # Smaller size, slightly above obstacles
-                        state_changed = True
-
-                # Move obstacles
                 for o in game_state["obstacles"]:
                     o["y"] += game_state["speed"]
                     state_changed = True
                 game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 800]
 
-                # Move coins
-                for c in game_state["coins"]:
-                    c["y"] += game_state["speed"]
-                    state_changed = True
-                game_state["coins"] = [c for c in game_state["coins"] if c["y"] < 800]
-
-                # Player logic
                 for i, player in enumerate(game_state["players"]):
                     if not player["gameOver"]:
-                        # Check for obstacle collisions
                         for o in game_state["obstacles"]:
                             if (o["y"] + 60 >= 650 and o["y"] + 60 <= 710 and
                                 abs(o["x"] - player["x"]) < 40):
                                 player["gameOver"] = True
                                 print(f"Player {i + 1} crashed at obstacle y={o['y']}")
-                                state_changed = True
-                        # Check for coin collection
-                        for c in list(game_state["coins"]):  # Use list() to allow removal during iteration
-                            if (c["y"] + 40 >= 650 and c["y"] + 40 <= 710 and  # Coin height assumed 40
-                                abs(c["x"] - player["x"]) < 40):
-                                player["coins"] += 1
-                                game_state["coins"].remove(c)
-                                print(f"Player {i + 1} collected a coin! Coins: {player['coins']}")
                                 state_changed = True
                         if not player["gameOver"]:
                             player["score"] += game_state["speed"] / 60
@@ -145,9 +119,6 @@ async def game_loop():
             else:
                 game_started = False
                 print("Game over: one player crashed")
-                # Determine winner based on coins
-                winner = 0 if game_state["players"][0]["coins"] > game_state["players"][1]["coins"] else 1
-                print(f"Winner is Player {winner + 1} with {game_state['players'][winner]['coins']} coins!")
                 state_changed = True
                 await broadcast_state()
                 game_state = reset_game_state()

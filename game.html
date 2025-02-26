@@ -31,6 +31,15 @@
             background: rgba(0, 0, 0, 0.7);
             padding: 10px;
             border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #gameOverScreen1.show, #gameOverScreen2.show {
+            display: block;
+            opacity: 1;
+        }
+        #gameOverScreen1.hide, #gameOverScreen2.hide {
+            opacity: 0;
         }
         #gameOverScreen1 { left: 150px; transform: translate(-50%, -50%); }
         #gameOverScreen2 { left: 450px; transform: translate(-50%, -50%); }
@@ -99,7 +108,10 @@
         carImage.onerror = () => console.error("Failed to load car.png");
         carImage.src = "images/car.png";
 
-        const socket = new WebSocket('wss://racing-game-server.onrender.com');
+        const WS_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+            ? `ws://${location.hostname}:8765`
+            : 'wss://racing-game-server.onrender.com';
+        const socket = new WebSocket(WS_URL);
 
         socket.onopen = () => {
             console.log("WebSocket connected");
@@ -119,8 +131,10 @@
                 console.log(`Player ID assigned: ${playerId}`);
             } else if (data.type === "start") {
                 gameStarted = true;
-                document.getElementById("gameOverScreen1").style.display = "none";
-                document.getElementById("gameOverScreen2").style.display = "none";
+                document.getElementById("gameOverScreen1").classList.remove("show");
+                document.getElementById("gameOverScreen1").classList.add("hide");
+                document.getElementById("gameOverScreen2").classList.remove("show");
+                document.getElementById("gameOverScreen2").classList.add("hide");
                 startGame();
             } else if (data.type === "state") {
                 player1 = { ...player1, ...data.players[0] };
@@ -135,8 +149,15 @@
         socket.onclose = () => console.log("WebSocket closed");
 
         function startGame() {
+            let lastMoveTime = 0;
+            const moveCooldown = 100; // 100ms cooldown
+
             document.addEventListener("keydown", (e) => {
                 if (!gameStarted) return;
+                const now = Date.now();
+                if (now - lastMoveTime < moveCooldown) return;
+                lastMoveTime = now;
+
                 if (playerId === 1 && !player1.gameOver) {
                     if (e.key === "ArrowLeft" && player1.x > road1X + 50) {
                         socket.send(JSON.stringify({ type: "move", playerId: 1, x: player1.x - 100 }));
@@ -151,6 +172,7 @@
                     }
                 }
             }, { once: false });
+
             requestAnimationFrame(gameLoop);
         }
 
@@ -211,19 +233,31 @@
             ctx.fillText(player2.username, road2X + roadWidth / 2, 20);
             ctx.fillText(`Score: ${Math.floor(player2.score)}`, road2X + roadWidth / 2, 40);
 
-            // Game over logic
             const eitherGameOver = player1.gameOver || player2.gameOver;
             if (eitherGameOver) {
                 if (playerId === 1) {
-                    document.getElementById("message1").textContent = player1.gameOver ? "You Lose" : "You Won";
-                    document.getElementById("gameOverScreen1").style.display = "block";
+                    document.getElementById("message1").textContent = player1.gameOver 
+                        ? `You Lose (Score: ${Math.floor(player1.score)})` 
+                        : `You Won (Score: ${Math.floor(player1.score)})`;
+                    const screen1 = document.getElementById("gameOverScreen1");
+                    screen1.classList.remove("hide");
+                    screen1.classList.add("show");
                     document.getElementById("backButton1").style.display = "inline-block";
                 } else if (playerId === 2) {
-                    document.getElementById("message2").textContent = player2.gameOver ? "You Lose" : "You Won";
-                    document.getElementById("gameOverScreen2").style.display = "block";
+                    document.getElementById("message2").textContent = player2.gameOver 
+                        ? `You Lose (Score: ${Math.floor(player2.score)})` 
+                        : `You Won (Score: ${Math.floor(player2.score)})`;
+                    const screen2 = document.getElementById("gameOverScreen2");
+                    screen2.classList.remove("hide");
+                    screen2.classList.add("show");
                     document.getElementById("backButton2").style.display = "inline-block";
                 }
-                gameStarted = false; // Stop local game loop
+                gameStarted = false;
+            } else {
+                document.getElementById("gameOverScreen1").classList.remove("show");
+                document.getElementById("gameOverScreen1").classList.add("hide");
+                document.getElementById("gameOverScreen2").classList.remove("show");
+                document.getElementById("gameOverScreen2").classList.add("hide");
             }
 
             requestAnimationFrame(gameLoop);

@@ -7,6 +7,7 @@ import os
 PORT = int(os.getenv("PORT", 8765))
 
 player_usernames = [None, None]
+obstacle_images = ['obstacleCarBlue.png', 'obstacleCarGreen.png', 'obstacleCarWhite.png']
 
 def reset_game_state():
     return {
@@ -24,7 +25,6 @@ def reset_game_state():
 
 game_state = reset_game_state()
 clients = {}
-obstacle_images = ['obstacleCarBlue.png', 'obstacleCarGreen.png', 'obstacleCarWhite.png']
 game_started = False
 
 async def handler(websocket):
@@ -51,6 +51,8 @@ async def handler(websocket):
             elif data["type"] == "move":
                 if not game_state["players"][player_id - 1]["gameOver"]:
                     game_state["players"][player_id - 1]["x"] = data["x"]
+                    # Mark state as changed when a player moves
+                    await broadcast_state()
     except websockets.ConnectionClosed:
         print(f"Player {player_id} disconnected")
         if websocket in clients:
@@ -61,10 +63,23 @@ async def handler(websocket):
             player_usernames = [None, None]
             print("Game reset: waiting for 2 players")
 
+async def broadcast_state():
+    """Helper function to broadcast game state to all clients."""
+    global clients, game_state
+    state_msg = json.dumps({"type": "state", **game_state})
+    for client in list(clients.keys()):
+        try:
+            await client.send(state_msg)
+        except websockets.ConnectionClosed:
+            if client in clients:
+                print(f"Client {clients[client]} disconnected during broadcast")
+                del clients[client]
+
 async def game_loop():
     global game_started, game_state, clients, player_usernames
     while True:
         if game_started and len(clients) == 2:
+            state_changed = False
             any_game_over = any(p["gameOver"] for p in game_state["players"])
             
             if not any_game_over:
@@ -77,9 +92,11 @@ async def game_loop():
                         lane = random.choice([100, 200, 400, 500])
                         img = random.choice(obstacle_images)
                         game_state["obstacles"].append({"x": lane, "y": -60, "img": img})
+                        state_changed = True
 
                 for o in game_state["obstacles"]:
                     o["y"] += game_state["speed"]
+                    state_changed = True
                 game_state["obstacles"] = [o for o in game_state["obstacles"] if o["y"] < 800]
 
                 for i, player in enumerate(game_state["players"]):
@@ -89,41 +106,29 @@ async def game_loop():
                                 abs(o["x"] - player["x"]) < 40):
                                 player["gameOver"] = True
                                 print(f"Player {i + 1} crashed at obstacle y={o['y']}")
+                                state_changed = True
                         if not player["gameOver"]:
                             player["score"] += game_state["speed"] / 60
+                            state_changed = True
 
                 game_state["dashOffset"] -= game_state["speed"]
                 if game_state["dashOffset"] <= -70:
                     game_state["dashOffset"] += 70
+                    state_changed = True
             else:
                 game_started = False
                 print("Game over: one player crashed")
-                # Send final state before full reset
-                state_msg = json.dumps({"type": "state", **game_state})
-                for client in list(clients.keys()):
-                    try:
-                        await client.send(state_msg)
-                    except websockets.ConnectionClosed:
-                        if client in clients:
-                            print(f"Client {clients[client]} disconnected during broadcast")
-                            del clients[client]
-                # Full reset after game over
+                state_changed = True
+                await broadcast_state()  # Send final state
                 game_state = reset_game_state()
-                clients.clear()  # Clear all client connections
+                clients.clear()
                 player_usernames = [None, None]
                 print("Server fully reset: ready for new game")
 
-            if not any_game_over:
-                state_msg = json.dumps({"type": "state", **game_state})
-                for client in list(clients.keys()):
-                    try:
-                        await client.send(state_msg)
-                    except websockets.ConnectionClosed:
-                        if client in clients:
-                            print(f"Client {clients[client]} disconnected during broadcast")
-                            del clients[client]
+            if state_changed and not any_game_over:
+                await broadcast_state()
 
-        await asyncio.sleep(1 / 30)
+        await asyncio.sleep(0.05)  # ~20 FPS
 
 async def main():
     server = await websockets.serve(handler, "0.0.0.0", PORT)

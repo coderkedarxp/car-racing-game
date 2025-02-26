@@ -1,341 +1,233 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <title>Racing Game - Multiplayer</title>
     <style>
-      body {
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: #333;
-        height: 100vh;
-        overflow: hidden;
-      }
-      #usernameDisplay {
-        color: white;
-        font-size: 20px;
-        margin: 10px;
-      }
-      #gameCanvas {
-        border: 1px solid black;
-        background: #555;
-        width: 600px;
-        height: 700px; /* Adjusted height */
-      }
-      #gameOverScreen1,
-      #gameOverScreen2 {
-        display: none;
-        position: absolute;
-        top: 50%;
-        width: 200px;
-        text-align: center;
-        color: white;
-        font-size: 30px;
-        font-family: Arial, sans-serif;
-        z-index: 10;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 10px;
-        border-radius: 5px;
-      }
-      #gameOverScreen1 {
-        left: 150px;
-        transform: translate(-50%, -50%);
-      }
-      #gameOverScreen2 {
-        left: 450px;
-        transform: translate(-50%, -50%);
-      }
-      .backButton {
-        margin-top: 20px;
-        padding: 10px 20px;
-        font-size: 16px;
-        background-color: #4caf50;
-        color: white;
-        border: none;
-        cursor: pointer;
-        text-decoration: none;
-        display: none;
-      }
-      .backButton:hover {
-        background-color: #45a049;
-      }
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #333;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            border: 1px solid black;
+            background: #555;
+            width: 600px;
+            height: 700px;
+        }
+        #gameOverScreen1, #gameOverScreen2 {
+            display: none;
+            position: absolute;
+            top: 50%;
+            width: 200px;
+            text-align: center;
+            color: white;
+            font-size: 30px;
+            font-family: Arial, sans-serif;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #gameOverScreen1 { left: 150px; transform: translate(-50%, -50%); }
+        #gameOverScreen2 { left: 450px; transform: translate(-50%, -50%); }
+        .backButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: none;
+        }
+        .backButton:hover { background-color: #45a049; }
     </style>
-  </head>
-  <body>
-    <div id="usernameDisplay"></div>
+</head>
+<body>
     <canvas id="gameCanvas"></canvas>
     <div id="gameOverScreen1">
-      <div>Game Over</div>
-      <a href="index.html" class="backButton" id="backButton1">Back to Menu</a>
+        <div id="message1">Game Over</div>
+        <a href="index.html" class="backButton" id="backButton1">Back to Menu</a>
     </div>
     <div id="gameOverScreen2">
-      <div>Game Over</div>
-      <a href="index.html" class="backButton" id="backButton2">Back to Menu</a>
+        <div id="message2">Game Over</div>
+        <a href="index.html" class="backButton" id="backButton2">Back to Menu</a>
     </div>
     <script>
-      const canvas = document.getElementById("gameCanvas");
-      const ctx = canvas.getContext("2d");
-      const roadWidth = 200;
-      const road1X = 50;
-      const road2X = 350;
-      const carWidth = 40,
-        carHeight = 60;
-      const obstacleWidth = 40,
-        obstacleHeight = 60;
-      const laneLeftOffset = roadWidth / 4;
-      const laneRightOffset = (3 * roadWidth) / 4;
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = 600;
+        canvas.height = 700;
 
-      let player1 = {
-        x: road1X + laneLeftOffset,
-        angle: 0,
-        targetAngle: 0,
-        lane: "left",
-        gameOver: false,
-        score: 0,
-      };
-      let player2 = {
-        x: road2X + laneLeftOffset,
-        angle: 0,
-        targetAngle: 0,
-        lane: "left",
-        gameOver: false,
-        score: 0,
-      };
-      let obstacles = [];
-      let gameTime = 0,
-        baseSpeed = 3,
-        speed = baseSpeed,
-        dashOffset = 0;
+        const roadWidth = 200;
+        const road1X = 50;
+        const road2X = 350;
+        const carWidth = 40;
+        const carHeight = 60;
+        const obstacleWidth = 40;
+        const obstacleHeight = 60;
 
-      const playerCarImg = new Image();
-      playerCarImg.src = "images/playerCar.png";
-      const obstacleCars = [new Image(), new Image(), new Image()];
-      obstacleCars[0].src = "images/obstacleCarBlue.png";
-      obstacleCars[1].src = "images/obstacleCarGreen.png";
-      obstacleCars[2].src = "images/obstacleCarWhite.png";
-      const obstacleImageMap = {
-        "obstacleCarBlue.png": obstacleCars[0],
-        "obstacleCarGreen.png": obstacleCars[1],
-        "obstacleCarWhite.png": obstacleCars[2],
-      };
+        let playerId;
+        let gameStarted = false;
+        let dashOffset = 0;
 
-      const socket = new WebSocket("wss://racing-game-server.onrender.com");
-      let playerId = null;
-      let gameStarted = false;
+        let player1 = { x: 100, gameOver: false, score: 0, username: "Player 1" };
+        let player2 = { x: 400, gameOver: false, score: 0, username: "Player 2" };
+        let obstacles = [];
 
-      socket.onopen = () => {
-        console.log("WebSocket connected");
-        player1 = {
-          x: road1X + laneLeftOffset,
-          angle: 0,
-          targetAngle: 0,
-          lane: "left",
-          gameOver: false,
-          score: 0,
+        const obstacleImageMap = {};
+        const obstacleImages = [
+            "images/obstacleCarBlue.png",
+            "images/obstacleCarGreen.png",
+            "images/obstacleCarWhite.png"
+        ];
+        obstacleImages.forEach(src => {
+            const img = new Image();
+            img.onload = () => console.log(`Loaded: ${src}`);
+            img.onerror = () => console.error(`Failed to load: ${src}`);
+            img.src = src;
+            obstacleImageMap[src.split('/')[1]] = img;
+        });
+
+        const carImage = new Image();
+        carImage.onload = () => console.log("Car image loaded");
+        carImage.onerror = () => console.error("Failed to load car.png");
+        carImage.src = "images/car.png";
+
+        const socket = new WebSocket(`ws://${location.hostname}:8765`);
+
+        socket.onopen = () => {
+            console.log("WebSocket connected");
+            const username = localStorage.getItem("username") || "Anonymous";
+            socket.send(JSON.stringify({ type: "join", username }));
+            player1 = { x: 100, gameOver: false, score: 0, username: "Player 1" };
+            player2 = { x: 400, gameOver: false, score: 0, username: "Player 2" };
+            obstacles = [];
+            gameStarted = false;
+            dashOffset = 0;
         };
-        player2 = {
-          x: road2X + laneLeftOffset,
-          angle: 0,
-          targetAngle: 0,
-          lane: "left",
-          gameOver: false,
-          score: 0,
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === "init") {
+                playerId = data.playerId;
+                console.log(`Player ID assigned: ${playerId}`);
+            } else if (data.type === "start") {
+                gameStarted = true;
+                document.getElementById("gameOverScreen1").style.display = "none";
+                document.getElementById("gameOverScreen2").style.display = "none";
+                startGame();
+            } else if (data.type === "state") {
+                player1 = { ...player1, ...data.players[0] };
+                player2 = { ...player2, ...data.players[1] };
+                obstacles = data.obstacles;
+                dashOffset = data.dashOffset;
+                console.log("Obstacles received:", obstacles.map(o => ({ x: o.x, y: o.y, img: o.img })));
+            }
         };
-        socket.send(
-          JSON.stringify({
-            type: "join",
-            username: localStorage.getItem("username") || "Unknown",
-          })
-        );
-      };
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log("Received:", data);
-        if (data.type === "init") {
-          playerId = data.playerId;
-          document.getElementById(
-            "usernameDisplay"
-          ).textContent = `Player ${playerId}: ${localStorage.getItem(
-            "username"
-          )}`;
-        } else if (data.type === "start") {
-          gameStarted = true;
-          document.getElementById("gameOverScreen1").style.display = "none";
-          document.getElementById("gameOverScreen2").style.display = "none";
-          startGame();
-        } else if (data.type === "state") {
-          player1.x = data.players[0].x;
-          player1.gameOver = data.players[0].gameOver;
-          player1.score = data.players[0].score;
-          player2.x = data.players[1].x;
-          player2.gameOver = data.players[1].gameOver;
-          player2.score = data.players[1].score;
-          obstacles = data.obstacles;
-          speed = data.speed;
-          gameTime = data.gameTime;
-          dashOffset = data.dashOffset;
-        }
-      };
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        alert("Failed to connect to the game server. Please try again later.");
-      };
-      socket.onclose = () => console.log("WebSocket closed");
 
-      let imagesLoaded = 0,
-        totalImages = 4; // Player car + 3 obstacle cars
-      function imageLoaded() {
-        imagesLoaded++;
-        console.log(`Images loaded: ${imagesLoaded}/${totalImages}`);
-        if (imagesLoaded === totalImages) {
-          console.log("Images ready, starting game");
-          if (playerId) drawCar(playerId === 1 ? player1 : player2);
-        }
-      }
-      function imageError(img) {
-        console.error(`Failed to load: ${img.src}`);
-      }
-      playerCarImg.onload = imageLoaded;
-      playerCarImg.onerror = () => imageError(playerCarImg);
-      obstacleCars.forEach((img) => {
-        img.onload = imageLoaded;
-        img.onerror = () => imageError(img);
-      });
+        socket.onerror = (error) => console.error("WebSocket error:", error);
+        socket.onclose = () => console.log("WebSocket closed");
 
-      canvas.width = 600;
-      canvas.height = 700; // Adjusted height
-
-      function drawRoad(x, gameOver) {
-        ctx.fillStyle = "gray";
-        ctx.fillRect(x, 0, roadWidth, canvas.height);
-        ctx.beginPath();
-        ctx.setLineDash([50, 20]);
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 4;
-        ctx.lineDashOffset = gameOver ? 0 : dashOffset;
-        ctx.moveTo(x + roadWidth / 2, 0);
-        ctx.lineTo(x + roadWidth / 2, canvas.height);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      function drawCar(player) {
-        ctx.save();
-        ctx.translate(player.x, canvas.height - carHeight / 2 - 10);
-        ctx.rotate(player.angle);
-        ctx.drawImage(
-          playerCarImg,
-          -carWidth / 2,
-          -carHeight / 2,
-          carWidth,
-          carHeight
-        );
-        ctx.restore();
-      }
-
-      document.addEventListener("keydown", (e) => {
-        if (playerId) {
-          let player = playerId === 1 ? player1 : player2;
-          let roadX = playerId === 1 ? road1X : road2X;
-          if (!player.gameOver) {
-            if (e.key === "ArrowLeft" && player.lane !== "left") {
-              player.targetX = roadX + laneLeftOffset;
-              player.targetAngle = -0.26;
-              player.lane = "left";
-              socket.send(
-                JSON.stringify({ type: "move", playerId, x: player.targetX })
-              );
-            } else if (e.key === "ArrowRight" && player.lane !== "right") {
-              player.targetX = roadX + laneRightOffset;
-              player.targetAngle = 0.26;
-              player.lane = "right";
-              socket.send(
-                JSON.stringify({ type: "move", playerId, x: player.targetX })
-              );
-            }
-          }
-        }
-      });
-
-      function startGame() {
-        console.log("Starting game");
-        gameLoop();
-      }
-
-      function gameLoop() {
-        try {
-          if (!gameStarted) return;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          drawRoad(road1X, player1.gameOver);
-          drawRoad(road2X, player2.gameOver);
-
-          const moveSpeed = 0.2;
-          [player1, player2].forEach((player) => {
-            player.angle += (player.targetAngle - player.angle) * moveSpeed;
-            if (Math.abs(player.targetAngle - player.angle) < 0.01) {
-              player.angle = player.targetAngle;
-              if (player.x === player.targetX) player.targetAngle = 0;
-            }
-            if (!player.gameOver) drawCar(player);
-          });
-
-          obstacles.forEach((o) => {
-            const img = obstacleImageMap[o.img];
-            if (img) {
-              // Draw for Player 1 (road1X = 50)
-              if (!player1.gameOver) {
-                ctx.drawImage(
-                  img,
-                  o.x - obstacleWidth / 2,
-                  o.y,
-                  obstacleWidth,
-                  obstacleHeight
-                );
-              }
-              // Draw for Player 2 (road2X = 350)
-              if (!player2.gameOver) {
-                let player2X;
-                if (o.side === "left") {
-                  player2X = o.x + 300; // Shift Player 1's left obstacle to Player 2's left lane
-                } else {
-                  // o.side === 'right'
-                  player2X = o.x + 300 - 100; // Shift Player 1's right obstacle to Player 2's right lane
+        function startGame() {
+            document.addEventListener("keydown", (e) => {
+                if (!gameStarted) return;
+                if (playerId === 1 && !player1.gameOver) {
+                    if (e.key === "ArrowLeft" && player1.x > road1X + 50) {
+                        socket.send(JSON.stringify({ type: "move", playerId: 1, x: player1.x - 100 }));
+                    } else if (e.key === "ArrowRight" && player1.x < road1X + 150) {
+                        socket.send(JSON.stringify({ type: "move", playerId: 1, x: player1.x + 100 }));
+                    }
+                } else if (playerId === 2 && !player2.gameOver) {
+                    if (e.key === "ArrowLeft" && player2.x > road2X + 50) {
+                        socket.send(JSON.stringify({ type: "move", playerId: 2, x: player2.x - 100 }));
+                    } else if (e.key === "ArrowRight" && player2.x < road2X + 150) {
+                        socket.send(JSON.stringify({ type: "move", playerId: 2, x: player2.x + 100 }));
+                    }
                 }
-                ctx.drawImage(
-                  img,
-                  player2X - obstacleWidth / 2,
-                  o.y,
-                  obstacleWidth,
-                  obstacleHeight
-                );
-              }
-            }
-          });
-
-          ctx.fillStyle = "white";
-          ctx.font = "16px Arial";
-          ctx.fillText(`Score: ${Math.floor(player1.score)}`, road1X, 20);
-          ctx.fillText(`Score: ${Math.floor(player2.score)}`, road2X, 20);
-
-          document.getElementById("gameOverScreen1").style.display =
-            player1.gameOver ? "block" : "none";
-          document.getElementById("gameOverScreen2").style.display =
-            player2.gameOver ? "block" : "none";
-          document.getElementById("backButton1").style.display =
-            player1.gameOver && player2.gameOver ? "inline-block" : "none";
-          document.getElementById("backButton2").style.display =
-            player1.gameOver && player2.gameOver ? "inline-block" : "none";
-
-          if (!player1.gameOver || !player2.gameOver) dashOffset -= speed;
-          if (dashOffset <= -70) dashOffset += 70;
-
-          requestAnimationFrame(gameLoop);
-        } catch (e) {
-          console.error("Game loop error:", e);
+            }, { once: false });
+            requestAnimationFrame(gameLoop);
         }
-      }
+
+        function drawRoad(x, isGameOver) {
+            ctx.fillStyle = isGameOver ? "#777" : "#999";
+            ctx.fillRect(x, 0, roadWidth, canvas.height);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+            ctx.moveTo(x + roadWidth, 0);
+            ctx.lineTo(x + roadWidth, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([20, 50]);
+            ctx.lineDashOffset = dashOffset;
+            ctx.moveTo(x + roadWidth / 2, 0);
+            ctx.lineTo(x + roadWidth / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawCar(x) {
+            if (carImage.complete) {
+                ctx.drawImage(carImage, x - carWidth / 2, canvas.height - carHeight - 50, carWidth, carHeight);
+            } else {
+                ctx.fillStyle = "blue";
+                ctx.fillRect(x - carWidth / 2, canvas.height - carHeight - 50, carWidth, carHeight);
+            }
+        }
+
+        function gameLoop() {
+            if (!gameStarted) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawRoad(road1X, player1.gameOver);
+            drawRoad(road2X, player2.gameOver);
+
+            if (!player1.gameOver) drawCar(player1.x);
+            if (!player2.gameOver) drawCar(player2.x);
+
+            obstacles.forEach(o => {
+                const img = obstacleImageMap[o.img];
+                if (img && img.complete) {
+                    ctx.drawImage(img, o.x - obstacleWidth / 2, o.y, obstacleWidth, obstacleHeight);
+                } else {
+                    ctx.fillStyle = "red";
+                    ctx.fillRect(o.x - obstacleWidth / 2, o.y, obstacleWidth, obstacleHeight);
+                }
+            });
+
+            ctx.fillStyle = "white";
+            ctx.font = "16px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(player1.username, road1X + roadWidth / 2, 20);
+            ctx.fillText(`Score: ${Math.floor(player1.score)}`, road1X + roadWidth / 2, 40);
+            ctx.fillText(player2.username, road2X + roadWidth / 2, 20);
+            ctx.fillText(`Score: ${Math.floor(player2.score)}`, road2X + roadWidth / 2, 40);
+
+            // Game over logic
+            const eitherGameOver = player1.gameOver || player2.gameOver;
+            if (eitherGameOver) {
+                if (playerId === 1) {
+                    document.getElementById("message1").textContent = player1.gameOver ? "You Lose" : "You Won";
+                    document.getElementById("gameOverScreen1").style.display = "block";
+                    document.getElementById("backButton1").style.display = "inline-block";
+                } else if (playerId === 2) {
+                    document.getElementById("message2").textContent = player2.gameOver ? "You Lose" : "You Won";
+                    document.getElementById("gameOverScreen2").style.display = "block";
+                    document.getElementById("backButton2").style.display = "inline-block";
+                }
+                gameStarted = false; // Stop local game loop
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
     </script>
-  </body>
+</body>
 </html>
